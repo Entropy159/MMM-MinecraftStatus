@@ -7,7 +7,6 @@
  */
 
 var NodeHelper = require("node_helper");
-var mp = require("minecraft-ping");
 
 
 module.exports = NodeHelper.create({
@@ -38,24 +37,32 @@ module.exports = NodeHelper.create({
     socketNotificationReceived: function(notification, payload) {
         if (notification === "MINECRAFT_PING") {
             //console.log("[MinecraftStatus] MCPinging " + payload.hostname + ":" + payload.port);
-            var arg = { host: payload.hostname, port: payload.port };
+            var arg = payload.hostname+":"+payload.port;
             var startTime = new Date();
             var helper = this;
-            mp.ping_fe01(arg, function(err, resp) {
-                if (err) {
-                    helper.sendSocketNotification("MINECRAFT_ERROR", {
+            var url = "https://api.mcsrvstat.us/3/";
+            if(payload.bedrock === true) {
+                url = "https://api.mcsrvstat.us/bedrock/3/"
+            }
+            const response = await fetch(url+arg);
+            if(!response.ok)
+                helper.sendSocketNotification("MINECRAFT_ERROR", {
                         identifier: payload.identifier,
                         message: helper.minecraftError2text(err)
                     });
-                } else {
-                    var timeSec = (new Date() - startTime);
-                    var playerCount = resp.numPlayers ? resp.numPlayers : resp.playersOnline;
-                    helper.sendSocketNotification("MINECRAFT_UPDATE", {
-                        identifier: payload.identifier,
-                        players: playerCount,
-                        latency: timeSec
-                    });
-                }
+            const data = response.json();
+            var online = data.online; //whether the server is online, if not then most of the other values won't exist
+            var players = data.players.online;
+            var maxPlayers = data.players.max;
+            var playerList = data.players.list; //only exists if there are online players
+            var motd = data.motd.clean; //use clean, raw, or html depending on use case
+            var gamemode = data.gamemode; //only for bedrock servers
+            var version = data.version; //could have multiple versions
+            var icon = data.icon; //may not exist
+            helper.sendSocketNotification("MINECRAFT_UPDATE", {
+                identifier: payload.identifier,
+                players: players,
+                latency: timeSec //remove?
             });
         }
     },
